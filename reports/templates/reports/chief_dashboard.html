@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Главный бухгалтер – свод</title>
+    
+    {% load static %}
+    <script src="{% static 'reports/js/docx.min.js' %}"></script>
+    
+    <style>
+        body { font-family: system-ui, sans-serif; background: #eef3f7; padding: 2rem; color: #1e2f3c; }
+        .container { max-width: 1300px; margin: 0 auto; }
+        .top-bar { background: white; border-radius: 28px; padding: 1.2rem 2rem; margin-bottom: 2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+        .section { background: white; border-radius: 28px; padding: 1.4rem 1.8rem; margin-bottom: 2rem; box-shadow: 0 6px 14px rgba(0,0,0,0.03); }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { border: 1px solid #dce5ec; padding: 10px; text-align: center; font-size: 0.9rem; }
+        th { background: #f8fbfd; color: #1d4d2d; }
+        input[type="date"], input[type="number"] { padding: 0.4rem 0.8rem; border-radius: 40px; border: 1px solid #cbdde6; font-size: 0.9rem; width: 100%; box-sizing: border-box; }
+        .btn-download { background: #2c7a4b; color: white; border: none; padding: 0.6rem 1.8rem; border-radius: 40px; cursor: pointer; font-size: 0.95rem; margin-top: 1rem; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .btn-download:hover { background: #23633c; }
+        .total-row { background: #f0f7f4; font-weight: bold; }
+        .date-box { margin-top: 0.5rem; color: #5b6f7c; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="top-bar">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <h1>📋 Главный бухгалтер — свод по АЗС</h1>
+            <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                <label style="font-weight: 500;">📅 Дата отчёта:</label>
+                <input type="date" id="reportDate" value="{{ selected_date }}" onchange="window.location.search='date='+this.value">
+            </div>
+        </div>
+        <div class="date-box"><span id="currentDateDisplay">Загрузка...</span></div>
+    </div>
+
+    <button class="btn-download" onclick="generateDOCX()">📎 Скачать DOCX</button>
+
+    <div class="section">
+        <h3>1. Остатки товара, л</h3>
+        <table id="remainsTable">
+            <thead><tr><th>АЗС</th><th>АИ-92</th><th>АИ-95</th><th>ДТ Евро</th><th>ДТ Евро Лето</th><th>Газ</th><th>Итого, л</th></tr></thead>
+            <tbody id="remainsTbody"></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h3>2. Продажи за смену, л</h3>
+        <table id="salesTable">
+            <thead><tr><th>АЗС</th><th>АИ-92</th><th>АИ-95</th><th>ДТ Евро</th><th>ДТ Евро Лето</th><th>Газ</th><th>Итого, л</th></tr></thead>
+            <tbody id="salesTbody"></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h3>3. Расшифровка продаж, руб</h3>
+        <table id="revenueTable">
+            <thead><tr><th>АЗС</th><th>Наличные</th><th>Банк</th><th>Ведомость</th><th>Итого, руб</th></tr></thead>
+            <tbody id="revenueTbody"></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h3>4. Касса</h3>
+        <table id="cashTable">
+            <thead><tr><th>АЗС</th><th>Не сдано смен</th><th>Сумма, руб</th><th>Скидка, руб</th></tr></thead>
+            <tbody id="cashTbody"></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h3>5. Банковский счёт</h3>
+        <table id="bankTable">
+            <thead><tr><th>Название счёта</th><th>Сумма, руб</th></tr></thead>
+            <tbody id="bankTbody"></tbody>
+        </table>
+    </div>
+</div>
+<button id="saveSettingsBtn" style="bottom: 30px; right: 30px; background: #2c7a4b; color: white; border: none; padding: 15px 25px; border-radius: 50px; font-size: 1rem; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; align-items: center; gap: 8px; z-index: 1000; transition: transform 0.2s;">
+    💾 Сохранить настройки
+</button>
+
+<script id="stations-data" type="application/json">
+    {{ stations_data_json }}
+</script>
+
+<script>
+        const STORAGE_KEY_STELE = 'azs_stele_prices';
+        const STORAGE_KEY_BANK = 'azs_bank_accounts';
+
+        let totalRem = {a92:0, a95:0, dtE:0, dtL:0, gas:0};
+        let totalSal = {a92:0, a95:0, dtE:0, dtL:0, gas:0};
+
+        // 1. ЗАГРУЗКА данных при старте
+        function loadFromStorage() {
+            // Загружаем цены стелы
+            const savedStele = localStorage.getItem(STORAGE_KEY_STELE);
+            if (savedStele) {
+                try {
+                    const prices = JSON.parse(savedStele);
+                    ['steleA92', 'steleA95', 'steleDtEuro', 'steleDtSummer', 'steleGas'].forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el && prices[id] !== undefined) el.value = prices[id];
+                    });
+                    // Триггерим пересчет, если данные загрузились
+                    if (typeof recalcStele === 'function') recalcStele();
+                } catch(e) { console.error('Ошибка загрузки цен стелы:', e); }
+            }
+
+            // Загружаем банковские счета
+            const savedBank = localStorage.getItem(STORAGE_KEY_BANK);
+            if (savedBank) {
+                try {
+                    const accounts = JSON.parse(savedBank);
+                    const inputs = document.querySelectorAll('.bank-amount');
+                    inputs.forEach((inp, index) => {
+                        if (accounts[index] !== undefined) inp.value = accounts[index];
+                    });
+                    // Пересчитываем итог по банку
+                    const event = new Event('input');
+                    if (inputs.length > 0) inputs[0].dispatchEvent(event);
+                } catch(e) { console.error('Ошибка загрузки банка:', e); }
+            }
+        }
+
+        // 2. СОХРАНЕНИЕ данных по кнопке
+        function saveToStorage() {
+            // Собираем цены стелы
+            const stelePrices = {};
+            ['steleA92', 'steleA95', 'steleDtEuro', 'steleDtSummer', 'steleGas'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) stelePrices[id] = el.value;
+            });
+            localStorage.setItem(STORAGE_KEY_STELE, JSON.stringify(stelePrices));
+
+            // Собираем банковские счета
+            const bankAmounts = [];
+            document.querySelectorAll('.bank-amount').forEach(inp => {
+                bankAmounts.push(inp.value);
+            });
+            localStorage.setItem(STORAGE_KEY_BANK, JSON.stringify(bankAmounts));
+
+            // Визуальное подтверждение
+            const btn = document.getElementById('saveSettingsBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '✅ Сохранено!';
+            btn.style.background = '#2ecc71';
+            setTimeout(() => {
+                btn.innerHTML = originalText;
+                btn.style.background = '#2c7a4b';
+            }, 2000);
+        }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        // Привязываем кнопку
+        const saveBtn = document.getElementById('saveSettingsBtn');
+        if (saveBtn) saveBtn.addEventListener('click', saveToStorage);
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+        // 1. Установка даты
+        const dateInput = document.getElementById('reportDate');
+        const display = document.getElementById('currentDateDisplay');
+        if (!dateInput.value) {
+            dateInput.value = new Date().toISOString().split('T')[0];
+        }
+        const d = new Date(dateInput.value + 'T00:00:00');
+        display.innerText = `Отчёт за: ${d.toLocaleDateString('ru-RU')}`;
+
+        // Чтение данных из Django
+        const dataEl = document.getElementById('stations-data');
+        let djangoData = [];
+        if (dataEl) {
+            try { 
+                djangoData = JSON.parse(dataEl.textContent); 
+            } catch(e) { console.error('Ошибка JSON:', e); }
+        }
+        renderTables(djangoData);
+
+        // 3. Заполнение банковских счетов
+        const bankTbody = document.getElementById('bankTbody');
+        if (bankTbody) {
+            const accounts = ["ЕВРОДИЗЕЛЬ", "ИП МАРС АБ", "ИП МАРС СБЕР", "ИП МАХСУД", "ИП МИНЗИЛЭ"];
+            let html = '';
+            accounts.forEach(acc => {
+                
+                html += `<tr><td>${acc}</td><td><input type="number" class="bank-amount" value="" placeholder="0"></td></tr>`;
+            });
+            html += `<tr class="total-row"><td><strong>ИТОГО</strong></td><td><strong id="bankTotal">0</strong></td></tr>`;
+            bankTbody.innerHTML = html;
+
+            document.querySelectorAll('.bank-amount').forEach(inp => {
+                inp.addEventListener('input', () => {
+                    let total = 0;
+                    document.querySelectorAll('.bank-amount').forEach(i => total += parseFloat(i.value) || 0);
+                    document.getElementById('bankTotal').innerText = total.toFixed(2);
+                });
+            });
+            
+        }
+
+        loadFromStorage();
+    });
+
+    function formatValue(value, hasData) {
+        if (!hasData) return '—';
+        if (value === '' || value === null || value === undefined) return '—';
+        if (value === 0) return '0';
+        return value;
+    }
+    function renderTables(data) {
+        const remainsTbody = document.getElementById('remainsTbody');
+        const salesTbody = document.getElementById('salesTbody');
+        const revenueTbody = document.getElementById('revenueTbody');
+        const cashTbody = document.getElementById('cashTbody');
+
+        ['steleA92','steleA95','steleDtEuro','steleDtSummer','steleGas'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('input', recalcStele);
+        });
+
+        let remHtml = '', salHtml = '', revHtml = '', cashHtml = '';
+        totalRem = {a92:0, a95:0, dtE:0, dtL:0, gas:0}, totalSal = {a92:0, a95:0, dtE:0, dtL:0, gas:0};
+        totalRev = {cash:0, bank:0, inv:0}, totalCashSum = 0, totalDiscount = 0;
+        let hasAnyData = false;
+
+        data.forEach(item => {
+            const r = item.report || {};
+            const hasData = !!item.report;
+            if (hasData) hasAnyData = true;
+
+            const a92r = r.ai92_stock || 0; const a95r = r.ai95_stock || 0;
+            const dtEr = r.dt_euro_stock || 0; const dtLr = r.dt_summer_stock || 0;
+            const gasr = r.gas_stock || 0;
+            totalRem.a92 += a92r; totalRem.a95 += a95r; totalRem.dtE += dtEr; totalRem.dtL += dtLr; totalRem.gas += gasr;
+
+            remHtml += `<tr>
+                <td>${item.station_name}</td>
+                <td>${formatValue(a92r, hasData)}</td><td>${formatValue(a95r, hasData)}</td>
+                <td>${formatValue(dtEr, hasData)}</td><td>${formatValue(dtLr, hasData)}</td>
+                <td>${formatValue(gasr, hasData)}</td>
+                <td>${hasData ? (a92r+a95r+dtEr+dtLr+gasr).toFixed(2) : '—'}</td>
+            </tr>`;
+
+            const a92s = r.ai92_sold || 0; const a95s = r.ai95_sold || 0;
+            const dtEs = r.dt_euro_sold || 0; const dtLs = r.dt_summer_sold || 0;
+            const gass = r.gas_sold || 0;
+            totalSal.a92 += a92s; totalSal.a95 += a95s; totalSal.dtE += dtEs; totalSal.dtL += dtLs; totalSal.gas += gass;
+
+            salHtml += `<tr>
+                <td>${item.station_name}</td>
+                <td>${formatValue(a92s, hasData)}</td><td>${formatValue(a95s, hasData)}</td>
+                <td>${formatValue(dtEs, hasData)}</td><td>${formatValue(dtLs, hasData)}</td>
+                <td>${formatValue(gass, hasData)}</td>
+                <td>${hasData ? (a92s+a95s+dtEs+dtLs+gass).toFixed(2) : '—'}</td>
+            </tr>`;
+
+            const cs = r.cash_sales || 0; const bs = r.card_sales || 0; const ivs = r.invoice_sales || 0;
+            totalRev.cash += cs; totalRev.bank += bs; totalRev.inv += ivs;
+
+            revHtml += `<tr>
+                <td>${item.station_name}</td>
+                <td>${formatValue(cs, hasData)}</td><td>${formatValue(bs, hasData)}</td>
+                <td>${formatValue(ivs, hasData)}</td>
+                <td>${hasData ? (cs+bs+ivs).toFixed(2) : '—'}</td>
+            </tr>`;
+
+            const nhs = r.not_handed_shifts || 0; const cb = r.cash_balance || 0; const dr = r.discount_rub || 0;
+            totalCashSum += cb; totalDiscount += dr;
+
+            cashHtml += `<tr>
+                <td>${item.station_name}</td>
+                <td>${formatValue(nhs, hasData)}</td><td>${formatValue(cb, hasData)}</td>
+                <td>${formatValue(dr, hasData)}</td>
+            </tr>`;
+        });
+
+        if (hasAnyData) {
+            remHtml += `<tr class="total-row"><td><strong>ИТОГО, л</strong></td>
+                <td><strong>${totalRem.a92.toFixed(2)}</strong></td><td><strong>${totalRem.a95.toFixed(2)}</strong></td>
+                <td><strong>${totalRem.dtE.toFixed(2)}</strong></td><td><strong>${totalRem.dtL.toFixed(2)}</strong></td>
+                <td><strong>${totalRem.gas.toFixed(2)}</strong></td>
+                <td><strong>${(totalRem.a92+totalRem.a95+totalRem.dtE+totalRem.dtL+totalRem.gas).toFixed(2)}</strong></td></tr>`;
+            
+            remHtml += `<tr><td><strong>Цена стелы, руб/л</strong></td>
+                <td><input type="number" id="steleA92" value="45"></td><td><input type="number" id="steleA95" value="48"></td>
+                <td><input type="number" id="steleDtEuro" value="52"></td><td><input type="number" id="steleDtSummer" value="50"></td>
+                <td><input type="number" id="steleGas" value="30"></td><td>-</td></tr>`;
+            
+            salHtml += `<tr class="total-row"><td><strong>ИТОГО, л</strong></td>
+                <td><strong>${totalSal.a92.toFixed(2)}</strong></td><td><strong>${totalSal.a95.toFixed(2)}</strong></td>
+                <td><strong>${totalSal.dtE.toFixed(2)}</strong></td><td><strong>${totalSal.dtL.toFixed(2)}</strong></td>
+                <td><strong>${totalSal.gas.toFixed(2)}</strong></td>
+                <td><strong>${(totalSal.a92+totalSal.a95+totalSal.dtE+totalSal.dtL+totalSal.gas).toFixed(2)}</strong></td></tr>`;
+
+                    // Добавь этот код сразу после блока с "Цена стелы" первой таблицы:
+            salHtml += `<tr><td><strong>Цена стелы, руб/л</strong></td>
+                <td id="steleA92_sale">45</td><td id="steleA95_sale">48</td>
+                <td id="steleDtEuro_sale">52</td><td id="steleDtSummer_sale">50</td>
+                <td id="steleGas_sale">30</td><td>-</td></tr>`;
+
+            // И строку расчета продаж по цене стелы:
+            salHtml += `<tr class="total-row"><td><strong>Продажи по цене стелы, руб</strong></td>
+                <td id="resSaleA92">0</td><td id="resSaleA95">0</td><td id="resSaleDtEuro">0</td>
+                <td id="resSaleDtSummer">0</td><td id="resSaleGas">0</td><td id="finalTotalSaleRub">0</td></tr>`;
+                
+            remHtml += `<tr class="total-row"><td><strong>Остаток по цене стелы, руб</strong></td>
+                <td id="resA92">0</td><td id="resA95">0</td><td id="resDtEuro">0</td>
+                <td id="resDtSummer">0</td><td id="resGas">0</td><td id="finalTotalRub">0</td></tr>`;
+
+            revHtml += `<tr class="total-row"><td><strong>ИТОГО</strong></td>
+                <td><strong>${totalRev.cash.toFixed(2)}</strong></td><td><strong>${totalRev.bank.toFixed(2)}</strong></td>
+                <td><strong>${totalRev.inv.toFixed(2)}</strong></td>
+                <td><strong>${(totalRev.cash+totalRev.bank+totalRev.inv).toFixed(2)}</strong></td></tr>`;
+
+            cashHtml += `<tr class="total-row"><td><strong>Всего денег</strong></td><td>-</td>
+                <td><strong>${totalCashSum.toFixed(2)}</strong></td><td><strong>${totalDiscount.toFixed(2)}</strong></td></tr>`;
+        } else {
+            remHtml += `<tr><td colspan="7" style="color:#aaa;">Нет данных за выбранную дату</td></tr>`;
+        }
+        remainsTbody.innerHTML = remHtml;
+        salesTbody.innerHTML = salHtml;
+        revenueTbody.innerHTML = revHtml;
+        cashTbody.innerHTML = cashHtml;
+
+        // Вешаем события после создания HTML
+        [
+            'steleA92',
+            'steleA95',
+            'steleDtEuro',
+            'steleDtSummer',
+            'steleGas'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', recalcStele);
+            }
+        });
+
+        // Загружаем сохраненные значения
+        loadFromStorage();
+
+        // Пересчитываем
+        if (hasAnyData) {
+            recalcStele();
+        }
+    }
+    function recalcStele() {
+                // Получаем значения из первой таблицы (они редактируемые)
+                const p92 = parseFloat(document.getElementById('steleA92').value)||0;
+                const p95 = parseFloat(document.getElementById('steleA95').value)||0;
+                const pDe = parseFloat(document.getElementById('steleDtEuro').value)||0;
+                const pDs = parseFloat(document.getElementById('steleDtSummer').value)||0;
+                const pG = parseFloat(document.getElementById('steleGas').value)||0;
+
+                // === СИНХРОНИЗАЦИЯ ЦЕН ===
+                // Копируем цены во вторую таблицу (не редактируемые)
+                document.getElementById('steleA92_sale').innerText = p92;
+                document.getElementById('steleA95_sale').innerText = p95;
+                document.getElementById('steleDtEuro_sale').innerText = pDe;
+                document.getElementById('steleDtSummer_sale').innerText = pDs;
+                document.getElementById('steleGas_sale').innerText = pG;
+
+                // === РАСЧЕТ ОСТАТКОВ (старая логика) ===
+                document.getElementById('resA92').innerText = (totalRem.a92 * p92).toFixed(2);
+                document.getElementById('resA95').innerText = (totalRem.a95 * p95).toFixed(2);
+                document.getElementById('resDtEuro').innerText = (totalRem.dtE * pDe).toFixed(2);
+                document.getElementById('resDtSummer').innerText = (totalRem.dtL * pDs).toFixed(2);
+                document.getElementById('resGas').innerText = (totalRem.gas * pG).toFixed(2);
+                
+                const totalRemRub = (totalRem.a92*p92)+(totalRem.a95*p95)+(totalRem.dtE*pDe)+(totalRem.dtL*pDs)+(totalRem.gas*pG);
+                document.getElementById('finalTotalRub').innerText = totalRemRub.toFixed(2);
+
+                // === НОВАЯ ЛОГИКА: РАСЧЕТ ПРОДАЖ ПО ЦЕНЕ СТЕЛЫ ===
+                document.getElementById('resSaleA92').innerText = (totalSal.a92 * p92).toFixed(2);
+                document.getElementById('resSaleA95').innerText = (totalSal.a95 * p95).toFixed(2);
+                document.getElementById('resSaleDtEuro').innerText = (totalSal.dtE * pDe).toFixed(2);
+                document.getElementById('resSaleDtSummer').innerText = (totalSal.dtL * pDs).toFixed(2);
+                document.getElementById('resSaleGas').innerText = (totalSal.gas * pG).toFixed(2);
+                
+                const totalSaleRub = (totalSal.a92*p92)+(totalSal.a95*p95)+(totalSal.dtE*pDe)+(totalSal.dtL*pDs)+(totalSal.gas*pG);
+                document.getElementById('finalTotalSaleRub').innerText = totalSaleRub.toFixed(2);
+            }
+    // ===== ГЕНЕРАТОР DOCX =====
+    function generateDOCX() {
+        const docx = window.docx;
+        if (!docx) { alert('Библиотека docx не загрузилась! Проверьте интернет.'); return; }
+        
+        const { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, AlignmentType, WidthType, BorderStyle } = docx;
+        const GRID = [2600, 1480, 1480, 1480, 1480, 1480, 1480];
+        const NO_BORDER = { top:{style:BorderStyle.NONE,size:0}, bottom:{style:BorderStyle.NONE,size:0}, left:{style:BorderStyle.NONE,size:0}, right:{style:BorderStyle.NONE,size:0} };
+        const THIN = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+        const THIN_BORDERS = { top:THIN, bottom:THIN, left:THIN, right:THIN };
+
+        function cellText(td) {
+            const input = td.querySelector("input");
+            let val = input ? input.value : td.innerText;
+            return val.trim() === "" ? "0" : val;
+        }
+
+        function cell(text, opts = {}) {
+            const span = opts.span || 1;
+            let width = opts.width;
+            if(width==null){ if(opts.col!=null){ width=0; for(let i=0;i<span;i++) width+=GRID[opts.col+i]||0; } else width=GRID[0]; }
+            return new TableCell({
+                columnSpan: span, width: {size:width, type:WidthType.DXA},
+                borders: opts.noBorder ? NO_BORDER : THIN_BORDERS,
+                margins: {top:20, bottom:20, left:60, right:60},
+                children: [new Paragraph({ alignment: opts.align||AlignmentType.CENTER, children:[new TextRun({text:String(text??""), bold:!!opts.bold, italics:true, size:18})] })]
+            });
+        }
+
+        function sectionTitleRow(title) {
+            return new TableRow({ children:[ new TableCell({ columnSpan:7, width:{size:GRID.reduce((a,b)=>a+b,0), type:WidthType.DXA}, borders:NO_BORDER, margins:{top:60,bottom:30,left:20,right:20}, children:[new Paragraph({alignment:AlignmentType.LEFT, children:[new TextRun({text:title, bold:true, italics:true, size:22})]})] })] });
+        }
+
+        function spacerRow() {
+            return new TableRow({ children:[ new TableCell({ columnSpan:7, width:{size:GRID.reduce((a,b)=>a+b,0), type:WidthType.DXA}, borders:NO_BORDER, children:[new Paragraph({children:[new TextRun({text:"", size:10})]})] })] });
+        }
+
+        function build7ColRows(tableId, title) {
+            const table = document.getElementById(tableId);
+            const rows = [ sectionTitleRow(title) ];
+            const headCells = [...table.querySelectorAll("thead th")];
+            rows.push(new TableRow({ children: headCells.map((th, i) => cell(th.innerText.trim(), { col: i, bold: true })) }));
+            [...table.querySelectorAll("tbody tr")].forEach(tr => {
+                const tds = [...tr.querySelectorAll("td")];
+                const isTotal = tr.classList.contains("total-row");
+                rows.push(new TableRow({ children: tds.map((td, i) => cell(cellText(td), { col: i, bold: isTotal || i === 0, align: i === 0 ? AlignmentType.LEFT : AlignmentType.CENTER })) }));
+            });
+            return rows;
+        }
+
+        function buildRevenueRows() {
+            const table = document.getElementById("revenueTable");
+            const rows = [ sectionTitleRow("РАСШИФРОВКА ПРОДАЖ") ];
+            const headCells = [...table.querySelectorAll("thead th")];
+            rows.push(new TableRow({ children: [ ...headCells.map((th, i) => cell(th.innerText.trim(), { col: i, bold: true })), cell("", { col: 5, span: 2, noBorder: true }) ] }));
+            [...table.querySelectorAll("tbody tr")].forEach(tr => {
+                const tds = [...tr.querySelectorAll("td")];
+                const isTotal = tr.classList.contains("total-row");
+                rows.push(new TableRow({ children: [ ...tds.map((td, i) => cell(cellText(td), { col: i, bold: isTotal || i === 0, align: i === 0 ? AlignmentType.LEFT : AlignmentType.CENTER })), cell("", { col: 5, span: 2, noBorder: true }) ] }));
+            });
+            return rows;
+        }
+
+        function buildCashBankRows() {
+            const cashTable = document.getElementById("cashTable");
+            const bankTable = document.getElementById("bankTable");
+            const rows = [ new TableRow({ children:[ new TableCell({columnSpan:4, width:{size:GRID[0]+GRID[1]+GRID[2]+GRID[3],type:WidthType.DXA}, borders:NO_BORDER, margins:{top:60,bottom:30,left:20,right:20}, children:[new Paragraph({children:[new TextRun({text:"КАССА",bold:true,italics:true,size:22})]})]}), new TableCell({columnSpan:3, width:{size:GRID[4]+GRID[5]+GRID[6],type:WidthType.DXA}, borders:NO_BORDER, margins:{top:60,bottom:30,left:20,right:20}, children:[new Paragraph({children:[new TextRun({text:"БАНКОВСКИЙ СЧЁТ",bold:true,italics:true,size:22})]})]})] } )];
+            
+            const leftRows = [];
+            const cashHead = [...cashTable.querySelectorAll("thead th")];
+            leftRows.push(cashHead.map((th, i) => cell(th.innerText.trim(), { col: i, bold: true })));
+            [...cashTable.querySelectorAll("tbody tr")].forEach(tr => {
+                const tds = [...tr.querySelectorAll("td")];
+                const isTotal = tr.classList.contains("total-row");
+                leftRows.push(tds.map((td, i) => cell(cellText(td), { col: i, bold: isTotal || i === 0, align: i === 0 ? AlignmentType.LEFT : AlignmentType.CENTER })));
+            });
+
+            const rightRows = [];
+            const bankHead = [...bankTable.querySelectorAll("thead th")];
+            rightRows.push([ cell(bankHead[0].innerText.trim(), { col: 4, span: 2, bold: true }), cell(bankHead[1].innerText.trim(), { col: 6, bold: true }) ]);
+            [...bankTable.querySelectorAll("tbody tr")].forEach(tr => {
+                const tds = [...tr.querySelectorAll("td")];
+                const isTotal = tr.classList.contains("total-row");
+                rightRows.push([ cell(cellText(tds[0]), { col: 4, span: 2, bold: isTotal, align: AlignmentType.LEFT }), cell(cellText(tds[1]), { col: 6, bold: isTotal }) ]);
+            });
+
+            const max = Math.max(leftRows.length, rightRows.length);
+            for (let i = 0; i < max; i++) {
+                const left = leftRows[i] || [ cell("", { col: 0, span: 4, noBorder: true }) ];
+                const right = rightRows[i] || [ cell("", { col: 4, span: 2, noBorder: true }), cell("", { col: 6, noBorder: true }) ];
+                rows.push(new TableRow({ children: [ ...left, ...right ] }));
+            }
+            return rows;
+        }
+
+        const rows = [];
+        rows.push(...build7ColRows("remainsTable", "ОСТАТКИ ТОВАРА, Л"));
+        rows.push(spacerRow());
+        rows.push(...build7ColRows("salesTable", "ПРОДАЖИ ЗА СМЕНУ, Л"));
+        rows.push(spacerRow());
+        rows.push(...buildRevenueRows());
+        rows.push(spacerRow());
+        rows.push(...buildCashBankRows());
+
+        const bigTable = new Table({ columnWidths:GRID, layout:docx.TableLayoutType.FIXED, width:{size:GRID.reduce((a,b)=>a+b,0), type:WidthType.DXA}, rows });
+        const doc = new Document({ sections:[{ properties:{ page:{ margin:{top:220,bottom:220,left:220,right:220} } }, children:[bigTable] }] });
+        
+        Packer.toBlob(doc).then(blob => {
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `otchet_${document.getElementById("reportDate").value}.docx`;
+            link.click();
+        });
+    }
+</script>
+</body>
+</html>
+

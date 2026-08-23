@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>АЗС – Ввод данных</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+            background: #eef3f7;
+            padding: 2rem 1.5rem;
+            color: #1e2f3c;
+        }
+
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+
+        .top-bar {
+            background: white;
+            border-radius: 28px;
+            padding: 1.2rem 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .station-info h2 {
+            font-size: 1.6rem;
+            font-weight: 600;
+        }
+
+        .station-info p {
+            color: #5b6f7c;
+            margin-top: 0.2rem;
+            font-size: 0.85rem;
+        }
+
+        .date-box {
+            background: rgb(64, 195, 20);
+            padding: 0.5rem 1.2rem;
+            border-radius: 40px;
+            font-weight: 500;
+        }
+
+        .section {
+            background: white;
+            border-radius: 28px;
+            padding: 1.4rem 1.8rem 2rem 1.8rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.03);
+        }
+
+        .section h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1.2rem;
+            border-left: 5px solid #2c7a4b;
+            padding-left: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            border: 1px solid #dce5ec;
+            padding: 12px 8px;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #f8fbfd;
+            font-weight: 600;
+            color: #1d4d2d;
+        }
+
+        input {
+            width: 100%;
+            border: 1px solid #cbdde6;
+            border-radius: 14px;
+            padding: 8px 10px;
+            font-size: 0.85rem;
+            text-align: center;
+            background: white;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #2c7a4b;
+            box-shadow: 0 0 0 2px rgba(44, 122, 75, 0.2);
+        }
+
+        .btn-submit {
+            background: #1f5e3a;
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 40px;
+            cursor: pointer;
+            margin-top: 1rem;
+            transition: 0.2s;
+        }
+
+        .btn-submit:hover {
+            background: #0f442a;
+        }
+
+        footer {
+            text-align: right;
+            margin-top: 1rem;
+        }
+        /* убираем стрелки у всех number-полей */
+        input[type="number"]::-webkit-inner-spin-button,
+        input[type="number"]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: textfield;
+        }
+    </style>
+</head>
+<body>
+<form method="post">
+{% csrf_token %}
+<div class="container">
+    <div class="top-bar" id="stationHeader">
+        <div class="station-info">
+            <h2>АЗС: {{ station_name }}</h2>
+            <!--<p>Бухгалтер: {{ current_user }}</p>-->
+            <p id="stationLogin"></p>
+        </div>
+        <div class="date-box" style="display: flex; align-items: center; gap: 1rem;">
+            <label style="font-weight: 500;">📅 Дата смены:</label>
+            <input type="date" id="reportDate" name="report_date" value="{{ today }}" style="padding: 0.4rem 0.8rem; border-radius: 40px; border: 1px solid #cbdde6; font-size: 0.9rem;">
+            <span id="currentDateDisplay" style="font-weight: 400; color: #2c5a6e;"></span>
+        </div>
+    </div>
+
+    <!-- 1. Остатки товара -->
+    <div class="section">
+        <h3>📦 Остатки товара</h3>
+        <table id="remainsTable">
+            <thead>
+                <tr><th>Продукт</th><th>Остаток на конец смены, л</th><th>Продажа за смену, л</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>АИ-92</td><td><input type="number" step="any" placeholder="0" name="ai92_stock"></td><td><input type="number" step="any" placeholder="0" name="ai92_sold"></td></tr>
+                <tr><td>АИ-95</td><td><input type="number" step="any" placeholder="0" name="ai95_stock"></td><td><input type="number" step="any" placeholder="0" name="ai95_sold"></td></tr>
+                <tr><td>ДТ Лето</td><td><input type="number" step="any" placeholder="0" name="dt_summer_stock"></td><td><input type="number" step="any" placeholder="0" name="dt_summer_sold"></td></tr>
+                <tr><td>ДТ Евро</td><td><input type="number" step="any" placeholder="0" name="dt_euro_stock"></td><td><input type="number" step="any" placeholder="0" name="dt_euro_sold"></td></tr>
+                <tr><td>Газ</td><td><input type="number" step="any" placeholder="0" name="gas_stock"></td><td><input type="number" step="any" placeholder="0" name="gas_sold"></td></tr>
+            </tbody>
+        </table>
+    </div>
+
+
+    <!-- 2. Расшифровка продаж (столбцы: Наличные, руб | Банк, руб | Ведомость, руб) -->
+    <div class="section">
+        <h3>💰 Расшифровка продаж</h3>
+        <table>
+            <thead>
+                <tr><th>Наличные, руб</th><th>Банк, руб</th><th>Ведомость, руб</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><input type="number" step="any" placeholder="0" id="cashRub" name="cash_sales"></td>
+                    <td><input type="number" step="any" placeholder="0" id="bankRub" name="card_sales"></td>
+                    <td><input type="number" step="any" placeholder="0" id="invoiceRub" name="invoice_sales"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 3. Касса: столбцы "Не сдано смен", "всего остаток денежных средств", "скидка покупателям за данную смену, руб" -->
+    <div class="section">
+        <h3>🧾 Касса</h3>
+        <table>
+            <thead>
+                <tr><th>Не сдано смен</th><th>Всего остаток денежных средств, руб</th><th>Скидка покупателям за данную смену, руб</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><input type="number" step="any" placeholder="0" id="notHandedShifts" name="not_handed_shifts"></td>
+                    <td><input type="number" step="any" placeholder="0" id="cashBalance" name="cash_balance"></td>
+                    <td><input type="number" step="any" placeholder="0" id="discountRub" name="discount_rub"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <footer>
+        <button class="btn-submit" id="sendDataBtn">📤 Отправить данные</button>
+    </footer>
+</div>
+
+</form>
+<script>
+    document.querySelector("form").addEventListener("submit", function () {
+        setTimeout(() => {
+            alert("✅ Данные успешно отправлены");
+        }, 100);
+    });
+</script>
+</body>
+</html>

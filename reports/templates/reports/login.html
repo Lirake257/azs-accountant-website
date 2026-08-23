@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <!-- Логин -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход — Бухгалтерия заправок</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+            background: #e9f0f5;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .login-container {
+            background: white;
+            padding: 2rem 2rem 2.2rem;
+            border-radius: 24px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+            width: 100%;
+            max-width: 380px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+            color: #1a3e50;
+        }
+
+        .sub {
+            color: #5c6f7e;
+            font-size: 0.85rem;
+            margin-bottom: 1.8rem;
+            border-bottom: 1px solid #e2e8f0;
+            display: inline-block;
+            padding-bottom: 6px;
+        }
+
+        .input-group {
+            margin-bottom: 1.2rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-weight: 500;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+            color: #1e2f3c;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px 14px;
+            font-size: 0.95rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 16px;
+            background: white;
+            transition: 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #2c7a4b;
+            box-shadow: 0 0 0 3px rgba(44, 122, 75, 0.2);
+        }
+
+        button {
+            background: #1f5e3a;
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 40px;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0f442a;
+        }
+
+        .demo-info {
+            background: #f4f9fc;
+            margin-top: 1.8rem;
+            padding: 12px;
+            border-radius: 18px;
+            font-size: 0.75rem;
+            color: #2c5a6e;
+        }
+
+        .demo-info span {
+            font-weight: 600;
+            color: #0f4c2d;
+        }
+    </style>
+</head>
+<body>
+<div class="login-container">
+    <h1>Топливный учёт</h1>
+    <div class="sub">АЗС + офис</div>
+
+    {% if form.errors %}
+        <div class="error-msg">
+            ❌ Неправильный логин или пароль.<br>
+            Обратите внимание: регистр букв имеет значение.
+        </div>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %} <!-- Это обязательная строка для Django -->
+        
+        <div class="form-group">
+            <label for="id_username">📧 Логин</label>
+            <!-- name="username" - это то, что ищет Django -->
+            <input type="text" name="username" id="id_username" required placeholder="Введите логин">
+        </div>
+        
+        <div class="form-group">
+            <label for="id_password">🔒 Пароль</label>
+            <!-- name="password" - это то, что ищет Django -->
+            <input type="password" name="password" id="id_password" required placeholder="Введите пароль">
+        </div>
+
+        <button type="submit">Войти</button>
+    </form>
+
+</div>
+
+</body>
+</html>
