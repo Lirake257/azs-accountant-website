@@ -4,7 +4,7 @@
 
 ## 🚀 Демо
 
-[Демо-версия сайта (клик)](https://https://lirake257.github.io/azs-accountant-website/)
+[Демо-версия сайта (клик)](https://lirake257.github.io/azs-accountant-website/)
 
 ---
 
